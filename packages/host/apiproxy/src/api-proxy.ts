@@ -124,7 +124,7 @@ const DEFAULT_MAX_MESSAGES = 50
  * is deferred work.
  */
 const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek',
+  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek', 'mcp',
 ] as const
 
 /** Provider work budget: at most 100 calls and 2,000 inspected hits. */
@@ -3423,6 +3423,19 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             details: { settingsNs, ...baseURL === undefined ? {} : { baseURL } },
           })
         }
+      },
+    },
+
+    mcp: {
+      list(request) {
+        // The manager service is present whenever the mcp-manager plugin
+        // mounts; a deployment without it answers an empty list, which the
+        // settings descriptor lets the client tell apart from a zero-server
+        // section.
+        const manager = ctx.get('mcpManager')
+        return Promise.resolve(ok(request, {
+          servers: manager === undefined ? [] : manager.list(),
+        }))
       },
     },
 
