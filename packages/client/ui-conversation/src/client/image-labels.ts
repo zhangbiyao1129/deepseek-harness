@@ -37,6 +37,7 @@ export function attachmentErrorText(
   switch (reason) {
     case 'MODEL_DOES_NOT_SUPPORT_IMAGES': return t('image.modelUnsupported')
     case 'SUBAGENT_IMAGE_UNSUPPORTED': return t('image.subagentUnsupported')
+    case 'VISION_DESCRIBE_FAILED': return t('image.visionDescribeFailed')
     case 'IMAGE_TOO_MANY_PIXELS': return t('image.tooManyPixels')
     // Undecodable bytes or a declared type its bytes contradict: solvable by
     // replacing or re-exporting the file, so it reads as a format problem.

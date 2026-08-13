@@ -24,11 +24,16 @@ import { WelcomeNotice } from './WelcomeNotice.tsx'
 import type { WelcomeNoticeInjected } from './WelcomeNotice.tsx'
 import { refreshWelcomeIfLoaded, WelcomeNoticeStore } from './welcome-store.ts'
 import { ModelsSettingsStore } from './store.ts'
+import { ImageDescribeStore, IMAGE_DESCRIBE_KEY_REF } from './image-describe-store.ts'
+import { ImageDescribeSection } from './ImageDescribeSection.tsx'
+import type { ImageDescribeSectionInjected } from './ImageDescribeSection.tsx'
 import { en, zh, type ModelsKey } from './locales.ts'
 import { WELCOME_NOTICE_SETTINGS_NAMESPACE } from '../onboarding-copy.ts'
 
 export type { ModelsSectionInjected, ModelsSectionProps } from './ModelsSection.tsx'
 export type { ModelsKey } from './locales.ts'
+export type { ImageDescribeState, ImageDescribeStore } from './image-describe-store.ts'
+export type { ImageDescribeSectionInjected, ImageDescribeSectionProps } from './ImageDescribeSection.tsx'
 
 declare module '@deepseek-ai/dsh-client-ui-slots' {
   interface LocaleNamespaceMap {
@@ -94,22 +99,42 @@ export function apply(ctx: ClientContext): void {
     hooks: { welcome: welcomeController.store },
     t,
   })
+  const imageDescribeController = new ImageDescribeStore(connection.api)
+  const imageDescribeUseSnapshot = bindSnapshotSelector(imageDescribeController.store)
+  const imageDescribeInjected = (): ImageDescribeSectionInjected => ({
+    controller: imageDescribeController,
+    useSnapshot: imageDescribeUseSnapshot,
+    api: connection.api,
+    t,
+  })
 
   // Pushed invalidations converge every open surface without polling: any
   // settings/credentials/topology change refetches once the page loaded.
   ctx.effect(() => {
     const refreshModels = (): void => { refreshIfLoaded(controller) }
+    const refreshVision = (): void => {
+      if (imageDescribeController.store.getSnapshot().status === 'idle') return
+      void imageDescribeController.load()
+    }
     const refreshAll = (): void => {
       refreshModels()
+      refreshVision()
       refreshWelcomeIfLoaded(welcomeController)
     }
     const disposers = [
       ctx.remote.$on('settings/document-updated', (ns) => {
         refreshModels()
+        refreshVision()
         if (ns === WELCOME_NOTICE_SETTINGS_NAMESPACE) refreshWelcomeIfLoaded(welcomeController)
       }),
-      ctx.remote.$on('credentials/updated', refreshModels),
-      ctx.remote.$on('llm/adapters-updated', refreshModels),
+      ctx.remote.$on('credentials/updated', (ref) => {
+        refreshModels()
+        if (ref === IMAGE_DESCRIBE_KEY_REF) refreshVision()
+      }),
+      ctx.remote.$on('llm/adapters-updated', () => {
+        refreshModels()
+        refreshVision()
+      }),
       ctx.on('connection/reset', refreshAll),
     ]
     return () => { for (const dispose of disposers) dispose() }
@@ -122,6 +147,13 @@ export function apply(ctx: ClientContext): void {
     label: () => t('nav'),
     inject: injected,
   }, ModelsSection))
+  ctx.slots.inject('settings.section', () => ctx.slots.register({
+    name: 'settings.section',
+    id: 'image-describe',
+    order: 20,
+    label: () => t('visionTitle'),
+    inject: imageDescribeInjected,
+  }, ImageDescribeSection))
   ctx.slots.inject('settings.onboarding', () => ctx.slots.register({
     name: 'settings.onboarding',
     id: 'welcome-notice',
