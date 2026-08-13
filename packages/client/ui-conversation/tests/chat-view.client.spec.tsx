@@ -1354,4 +1354,85 @@ describe('ChatView', () => {
     expect(failedView.getByText('Compaction cancelled.')).toBeTruthy()
     expect(failedView.container.querySelector('[data-state="error"]')).not.toBeNull()
   })
+
+  it('folds a long consecutive tool-call run behind the latest 2 rows', () => {
+    const h = makeHarness({
+      nodes: [
+        user(1, 'run it'),
+        toolResult(2, 'a'), toolResult(3, 'b'), toolResult(4, 'c'),
+        toolResult(5, 'd'), toolResult(6, 'e'),
+      ],
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    // Only the latest two seats render; the older three fold behind the toggle.
+    expect(view.getByTestId('tool-seat-d')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-e')).toBeTruthy()
+    expect(view.queryByTestId('tool-seat-a')).toBeNull()
+    expect(view.queryByTestId('tool-seat-b')).toBeNull()
+    expect(view.queryByTestId('tool-seat-c')).toBeNull()
+    const toggle = view.getByRole('button', { name: '已折叠 3 个工具调用' })
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+
+    // Expand: every seat in the run renders.
+    fireEvent.click(toggle)
+    expect(view.getByTestId('tool-seat-a')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-b')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-c')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-d')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-e')).toBeTruthy()
+    expect(view.getByRole('button', { name: '收起工具调用' }).getAttribute('aria-expanded')).toBe('true')
+
+    // Collapse again: the run folds back to the latest two.
+    fireEvent.click(view.getByRole('button', { name: '收起工具调用' }))
+    expect(view.queryByTestId('tool-seat-a')).toBeNull()
+    expect(view.queryByTestId('tool-seat-b')).toBeNull()
+    expect(view.queryByTestId('tool-seat-c')).toBeNull()
+    expect(view.getByTestId('tool-seat-d')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-e')).toBeTruthy()
+  })
+
+  it('keeps short tool-call runs and non-tool rows unfolded', () => {
+    const h = makeHarness({
+      nodes: [
+        user(1, 'run it'),
+        toolResult(2, 'a'), toolResult(3, 'b'),
+        assistant(4, 'middle'),
+        toolResult(5, 'c'),
+      ],
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.getByTestId('tool-seat-a')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-b')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-c')).toBeTruthy()
+    expect(view.getByText('middle')).toBeTruthy()
+    expect(view.queryByRole('button', { name: /工具调用/ })).toBeNull()
+  })
+
+  it('slides the visible window as a folded run grows', () => {
+    const h = makeHarness({
+      nodes: [toolResult(1, 'a'), toolResult(2, 'b'), toolResult(3, 'c'), toolResult(4, 'd')],
+    })
+    const view = render(<h.ChatView {...h.props} />)
+    expect(view.queryByTestId('tool-seat-a')).toBeNull()
+    expect(view.queryByTestId('tool-seat-b')).toBeNull()
+    expect(view.getByTestId('tool-seat-c')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-d')).toBeTruthy()
+
+    act(() => {
+      h.set({
+        nodes: [
+          toolResult(1, 'a'), toolResult(2, 'b'), toolResult(3, 'c'),
+          toolResult(4, 'd'), toolResult(5, 'e'), toolResult(6, 'f'),
+        ],
+      })
+    })
+    // The newest two stay visible; the folded count slides forward.
+    expect(view.queryByTestId('tool-seat-a')).toBeNull()
+    expect(view.queryByTestId('tool-seat-b')).toBeNull()
+    expect(view.queryByTestId('tool-seat-c')).toBeNull()
+    expect(view.queryByTestId('tool-seat-d')).toBeNull()
+    expect(view.getByTestId('tool-seat-e')).toBeTruthy()
+    expect(view.getByTestId('tool-seat-f')).toBeTruthy()
+    expect(view.getByRole('button', { name: '已折叠 4 个工具调用' })).toBeTruthy()
+  })
 })

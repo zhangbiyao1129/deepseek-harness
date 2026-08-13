@@ -14,6 +14,7 @@
 
 import { useEffect, useLayoutEffect, useMemo, useRef, useState } from 'react'
 import type { ConversationTimelineSnapshot } from '@deepseek-ai/dsh-client-runtime/client'
+import type { ChatNodeStore } from '@deepseek-ai/dsh-client-runtime/client'
 import { IconChevronDownOutline14 } from '@deepseek-ai/dsh-client-ui-primitives'
 import type { ChatViewSlotProps } from '../contract/slots.ts'
 import { PendingSteeringBubble } from './MessageItem.tsx'
@@ -22,6 +23,37 @@ import { formatRunDuration } from './message-chrome.ts'
 import css from './ChatView.module.css'
 
 const FOLLOW_THRESHOLD = 24
+
+/** Root tool-call rows kept visible when a consecutive tool-call run folds. */
+const TOOL_RUN_VISIBLE = 2
+
+/** One flow unit: a plain node row or a consecutive run of tool-call rows. */
+type FlowGroup =
+  | { readonly type: 'node'; readonly key: string }
+  | { readonly type: 'tool-run'; readonly key: string; readonly keys: readonly string[] }
+
+/** Group consecutive tool-call nodes so a long burst folds behind the latest rows. */
+function groupFlow(order: readonly string[], nodeStore: ChatNodeStore): FlowGroup[] {
+  const groups: FlowGroup[] = []
+  let run: string[] = []
+  const flush = (): void => {
+    if (run.length > 0) {
+      const key = run[0]
+      if (key !== undefined) groups.push({ type: 'tool-run', key, keys: run })
+      run = []
+    }
+  }
+  for (const key of order) {
+    if (nodeStore.get(key)?.kind === 'tool-call') {
+      run.push(key)
+    } else {
+      flush()
+      groups.push({ type: 'node', key })
+    }
+  }
+  flush()
+  return groups
+}
 
 /** Active column host when present; otherwise the view-local scroller. */
 function scrollerOf(from: HTMLElement): HTMLElement {
@@ -165,6 +197,18 @@ export function ChatView({
     [inbox],
   )
   const runningTurnStart = useMemo(() => runningTurnStartTime(timeline), [timeline])
+  // Consecutive tool-call runs fold behind a toggle; expansion is per-run
+  // view state keyed by the run's first node key (stable while the run grows).
+  const flowGroups = useMemo(() => groupFlow(order, nodeStore), [order, nodeStore])
+  const [expandedRuns, setExpandedRuns] = useState<ReadonlySet<string>>(() => new Set())
+  const toggleRun = (runKey: string): void => {
+    setExpandedRuns((previous) => {
+      const next = new Set(previous)
+      if (next.has(runKey)) next.delete(runKey)
+      else next.add(runKey)
+      return next
+    })
+  }
 
   const listRef = useRef<HTMLDivElement | null>(null)
   const columnRef = useRef<HTMLDivElement | null>(null)
@@ -379,22 +423,62 @@ export function ChatView({
               </button>
             </div>
           )}
-          {order.map(nodeKey => (
-            <ChatNodeSeat
-              key={nodeKey}
-              nodeKey={nodeKey}
-              useSession={useSession}
-              selectedCallId={selectedCallId}
-              cwd={cwd}
-              openFile={openFile}
-              inspectCall={inspectCall}
-              forkAt={forkAt}
-              loadImage={loadImage}
-              fileMentions={fileMentions}
-              renderSlot={renderSlot}
-              t={t}
-            />
-          ))}
+          {flowGroups.map((group) => {
+            if (group.type === 'node') {
+              return (
+                <ChatNodeSeat
+                  key={group.key}
+                  nodeKey={group.key}
+                  useSession={useSession}
+                  selectedCallId={selectedCallId}
+                  cwd={cwd}
+                  openFile={openFile}
+                  inspectCall={inspectCall}
+                  forkAt={forkAt}
+                  loadImage={loadImage}
+                  fileMentions={fileMentions}
+                  renderSlot={renderSlot}
+                  t={t}
+                />
+              )
+            }
+            const runKey = group.key
+            const hidden = group.keys.length - TOOL_RUN_VISIBLE
+            const expanded = expandedRuns.has(runKey)
+            const visible = hidden <= 0 || expanded ? group.keys : group.keys.slice(hidden)
+            return (
+              <div key={runKey} className={css.toolRun} data-tool-run={runKey}>
+                {hidden > 0 && (
+                  <button
+                    type="button"
+                    className={css.toolRunToggle}
+                    aria-expanded={expanded}
+                    onClick={() => { toggleRun(runKey) }}
+                  >
+                    {expanded
+                      ? t('chat.toolRunCollapse')
+                      : t('chat.toolRunFolded', { count: hidden })}
+                  </button>
+                )}
+                {visible.map(nodeKey => (
+                  <ChatNodeSeat
+                    key={nodeKey}
+                    nodeKey={nodeKey}
+                    useSession={useSession}
+                    selectedCallId={selectedCallId}
+                    cwd={cwd}
+                    openFile={openFile}
+                    inspectCall={inspectCall}
+                    forkAt={forkAt}
+                    loadImage={loadImage}
+                    fileMentions={fileMentions}
+                    renderSlot={renderSlot}
+                    t={t}
+                  />
+                ))}
+              </div>
+            )
+          })}
           {/* No pending placeholders: questions (ui-user-questions) and approvals
               (ApprovalPanel) both take over the composer, so a flow card would
               double-render the same wait. */}

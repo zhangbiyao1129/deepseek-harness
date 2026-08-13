@@ -61,6 +61,30 @@
   border-radius: 6px;
 }
 
+/* A folded tool-call run: the toggle sits above the visible seats, which
+   keep the column's 16px rhythm inside the run wrapper. */
+.toolRun {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-width: 0;
+}
+
+.toolRunToggle {
+  align-self: flex-start;
+  border: none;
+  border-radius: 14px;
+  padding: 4px 12px;
+  font: var(--dsw-font-xs-13);
+  color: var(--dsw-alias-label-secondary);
+  background: var(--dsw-alias-interactive-bg-hover-solid);
+  cursor: pointer;
+}
+
+.toolRunToggle:hover {
+  background: var(--dsw-alias-interactive-bg-hover);
+}
+
 /* Selection still sets data-selected for details linkage; no outline —
    tool rows match Think chrome (no selected ring). */
 
