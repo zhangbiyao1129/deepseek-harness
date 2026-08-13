@@ -813,10 +813,32 @@ describe('reasoning-dispatch compat switches', () => {
     expect(models.get(responses.id)?.compat).toEqual(responses.compat)
   })
 
+  it('carries supportsDeveloperRole through both levels like the other switches', () => {
+    const models = modelsOf({
+      'acme-gateway': {
+        api: 'openai-completions',
+        baseURL: 'https://acme.test',
+        compat: { supportsDeveloperRole: false },
+        models: [
+          { id: 'role-default', reasoningEfforts: { off: null, high: 'high' } },
+          { id: 'role-odd', compat: { supportsDeveloperRole: true } },
+        ],
+      },
+    }, 'acme-gateway')
+
+    expect(models.get('role-default')?.compat).toEqual({ supportsDeveloperRole: false })
+    expect(models.get('role-odd')?.compat).toEqual({ supportsDeveloperRole: true })
+  })
+
   it('rejects a model-level switch on a protocol that has no such field', () => {
     expect(() => resolveProfiles({
       anthropic: {
         models: [{ id: 'claude-sonnet-4-5', compat: { thinkingFormat: 'openai' } }],
+      },
+    })).toThrow(/exist only on openai-completions/)
+    expect(() => resolveProfiles({
+      anthropic: {
+        models: [{ id: 'claude-sonnet-4-5', compat: { supportsDeveloperRole: false } }],
       },
     })).toThrow(/exist only on openai-completions/)
   })
@@ -824,6 +846,9 @@ describe('reasoning-dispatch compat switches', () => {
   it('rejects route switches no model on the route can take', () => {
     expect(() => resolveProfiles({
       anthropic: { compat: { thinkingFormat: 'openai' } },
+    })).toThrow(/no model on the route speaks openai-completions/)
+    expect(() => resolveProfiles({
+      anthropic: { compat: { supportsDeveloperRole: false } },
     })).toThrow(/no model on the route speaks openai-completions/)
   })
 })

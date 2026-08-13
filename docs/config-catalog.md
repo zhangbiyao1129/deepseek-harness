@@ -1036,10 +1036,12 @@ export interface PiAiModelProfile {
 export type PiAiModelOverride = Omit<PiAiModelProfile, 'id'>
 
 /**
- * Reasoning-dispatch compatibility switches, set on the route (its models'
- * default) or per model (winning over the route). Only the switches pi-ai's
- * reasoning dispatch reads are offered; the rest of pi-ai's compat surface
- * keeps its baseURL-derived auto-detection. pi-ai types both fields only on
+ * Compatibility switches for what declaring reasoning changes on the wire, set
+ * on the route (its models' default) or per model (winning over the route).
+ * Only the switches a reasoning declaration reaches are offered — the two that
+ * carry the thinking level, and the system-prompt role pi-ai renames alongside
+ * it; the rest of pi-ai's compat surface keeps its baseURL-derived
+ * auto-detection. pi-ai types all three fields only on
  * `OpenAICompletionsCompat` — the other wire protocols define their reasoning
  * fields in the protocol itself — so resolution rejects a model-level switch
  * anywhere else, while a route-level default skips past models it cannot fit.
@@ -1049,6 +1051,16 @@ export interface PiAiCompatProfile {
   thinkingFormat?: PiAiThinkingFormat
   /** Whether the endpoint accepts `reasoning_effort`; absent keeps the catalog entry's, then pi-ai's baseURL-derived guess. */
   supportsReasoningEffort?: boolean
+  /**
+   * Whether the endpoint accepts the `developer` system-prompt role a reasoning
+   * model otherwise receives; absent keeps the catalog entry's, then pi-ai's
+   * baseURL-derived guess. `false` keeps the system prompt on `system`, which a
+   * gateway forwarding to a provider that never adopted the rename requires.
+   * pi-ai ties the rename to whether the model reasons at all rather than to
+   * the level dispatched, so declaring reasoning is what surfaces the mismatch,
+   * on every request including those naming no thinking level.
+   */
+  supportsDeveloperRole?: boolean
 }
 
 /** One request modality a pi-ai model may accept. */
