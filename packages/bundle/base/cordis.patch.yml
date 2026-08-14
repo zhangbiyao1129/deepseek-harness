@@ -95,6 +95,14 @@
     - id: llm-pi-ai
       name: '@deepseek-ai/dsh-llm-pi-ai'
 
+    # The MCP server manager, mounted dormant: zero mcp-client instances (and
+    # no MCP tools on the model) until a `mcp:` settings section supplies
+    # servers — then each enabled entry mounts as its own mcp-client bridge,
+    # and section edits reconcile the mounted set without a restart. Supplying
+    # those servers is exactly what the web MCP page does.
+    - id: mcp-manager
+      name: '@deepseek-ai/dsh-mcp-manager'
+
     - id: session-persistence-jsonl
       name: '@deepseek-ai/dsh-session-persistence-jsonl'
       config:
