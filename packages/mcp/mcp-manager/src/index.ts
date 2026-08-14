@@ -88,6 +88,7 @@ export interface ServerEntry {
 
 /** The `mcp:` section: a map of `serverName` to server entry. */
 export interface ManagerConfig {
+  /** Configured servers keyed by `serverName`; the key is the mcp-client instance name and the tool-namespace prefix. */
   servers: Record<string, ServerEntry>
 }
 
@@ -158,7 +159,10 @@ export class ManagerCore {
     private readonly client: ClientPluginFactory = clientPlugin,
   ) {}
 
-  /** Current status of every server this manager has mounted or attempted. */
+  /**
+   * Current status of every server this manager has mounted or attempted.
+   * @returns one entry per tracked server, in mount order.
+   */
   list(): McpServerStatusView[] {
     return [...this.statuses.entries()].map(([serverName, status]) => ({ serverName, ...status }))
   }
@@ -277,7 +281,10 @@ export class McpManagerService extends Service {
     super(ctx, 'mcpManager')
   }
 
-  /** Snapshot of every server's activation status. */
+  /**
+   * Snapshot of every server's activation status.
+   * @returns one entry per configured-and-enabled server, in mount order.
+   */
   list(): McpServerStatusView[] {
     return this.core.list()
   }

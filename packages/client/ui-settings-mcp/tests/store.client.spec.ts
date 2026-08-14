@@ -40,9 +40,9 @@ function api(overrides: {
   const face = {
     settings: {
       describe: overrides.describeSettings ?? (() => Promise.resolve(ok({ writable: true, hasDocument: false, namespaces: [NAMESPACE] }))),
-      update: () => Promise.resolve(fail('unused') as RpcResponse<SettingsNamespaceView>),
-      replace: () => Promise.resolve(fail('unused') as RpcResponse<SettingsNamespaceView>),
-      mutate: () => Promise.resolve(fail('unused') as RpcResponse<SettingsNamespaceView>),
+      update: () => Promise.resolve(fail<SettingsNamespaceView>('unused')),
+      replace: () => Promise.resolve(fail<SettingsNamespaceView>('unused')),
+      mutate: () => Promise.resolve(fail<SettingsNamespaceView>('unused')),
       openDocument: () => Promise.resolve(ok({ opened: true as const })),
     },
     mcp: {

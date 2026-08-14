@@ -8,7 +8,7 @@ English | [中文](2026-08-14-mcp-server-manager.zh.md)
 
 ## Problem
 
-`dsh-mcp-client` existed but was never wired: the [shipped-roster decision](2026-07-31-even-out-shipped-tool-rosters.md) deliberately withheld it from the shipped rows — a per-server composition row would have to name a third-party server and spawn it on every launch, and "the layer that would make MCP a default" (a bridge reading a user's server list and mounting one client per entry) did not exist. The runtime therefore had no MCP capability, the web UI had no way to add a custom server, and the only path was editing `cordis.yml` per server and restarting.
+`dsh-mcp-client` existed but was never wired: the [shipped-roster decision](../feature/2026-07-31-even-out-shipped-tool-rosters.md) deliberately withheld it from the shipped rows — a per-server composition row would have to name a third-party server and spawn it on every launch, and "the layer that would make MCP a default" (a bridge reading a user's server list and mounting one client per entry) did not exist. The runtime therefore had no MCP capability, the web UI had no way to add a custom server, and the only path was editing `cordis.yml` per server and restarting.
 
 ## Decision
 
@@ -19,6 +19,12 @@ English | [中文](2026-08-14-mcp-server-manager.zh.md)
 **Status travels on a read-only snapshot, configuration on the existing settings domain.** The manager provides `ctx.mcpManager` (`list()`), emits `mcp/synced` after every reconcile with the same snapshot, and exposes one new wire method (`mcp.list`) with no write surface — configuration writes go through the existing `settings.*` methods, which already carry revision conflict detection and seam validation. The `mcp` namespace joins the `WEB_SETTINGS_NAMESPACES` allowlist, the explicit gate that keeps a registering plugin from becoming remotely writable by default.
 
 **The web page is a settings section, not a new shell.** `ui-settings-mcp` registers a `settings.section` entry (order 20, after Models) and renders a three-domain-free join: the `mcp` namespace view from `settings.describe` plus the status snapshot from `mcp.list`. One hand-written editor card serves both transports, with local validation mirroring the manager's section validation; saves land as `settings.mutate` path ops (a rename is an atomic unset + set in one mutate). The page follows the Models page's invalidation wiring: forwarded `settings/document-updated` plus `connection/reset` converge without polling.
+
+## Consequences
+
+MCP servers become user settings rather than composition facts: a server is added, edited, or disabled from the web page and reconciles in place, with no `cordis.yml` edit and no restart. The cost is that the manager owns a mount lifecycle the composition file no longer describes — reading `cordis.yml` no longer tells you which MCP servers a session will have, and `ctx.mcpManager` plus `mcp/synced` are the only authority on what is mounted. A server whose activation fails is a recorded `error` status rather than a boot failure, so a broken third-party server degrades that one entry instead of the session.
+
+Exposure stays explicit in two places that must move together: the `mcp` namespace in this package's configuration allowlist, and the `mcp.list` wire method. A future namespace registered by some other plugin remains unreachable from a client until it is added there.
 
 ## Alternatives considered
 

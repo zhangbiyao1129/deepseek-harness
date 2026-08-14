@@ -72,17 +72,30 @@ export function messageOf(error: unknown): string {
 
 // ---- Editor text <-> structured value conversions ----
 
-/** Split one argument per line, trimming blank lines (arguments may contain spaces). */
+/**
+ * Split one argument per line, trimming blank lines (arguments may contain spaces).
+ * @param text - the editor's one-argument-per-line text.
+ * @returns one entry per non-blank line, in editor order.
+ */
 export function parseArgs(text: string): string[] {
   return text.split('\n').map(line => line.trim()).filter(line => line.length > 0)
 }
 
-/** Serialize args back to the editor's one-per-line text. */
+/**
+ * Serialize args back to the editor's one-per-line text.
+ * @param args - the entry's arguments; absent is the empty list.
+ * @returns one line per argument.
+ */
 export function formatArgs(args: readonly string[] | undefined): string {
   return (args ?? []).join('\n')
 }
 
-/** Parse `KEY=VALUE` lines into an env record; blank lines are skipped. */
+/**
+ * Parse `KEY=VALUE` lines into an env record; blank lines are skipped.
+ * @param text - the editor's one-assignment-per-line text; a line without a
+ *   name before `=` is skipped.
+ * @returns the parsed variables; a repeated name keeps its last value.
+ */
 export function parseEnv(text: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split('\n')) {
@@ -95,12 +108,21 @@ export function parseEnv(text: string): Record<string, string> {
   return out
 }
 
-/** Serialize an env record back to `KEY=VALUE` lines. */
+/**
+ * Serialize an env record back to `KEY=VALUE` lines.
+ * @param env - the entry's variables; absent is the empty record.
+ * @returns one `KEY=VALUE` line per variable.
+ */
 export function formatEnv(env: Record<string, string> | undefined): string {
   return Object.entries(env ?? {}).map(([key, value]) => `${key}=${value}`).join('\n')
 }
 
-/** Parse `Key: Value` lines into a header record; blank lines are skipped. */
+/**
+ * Parse `Key: Value` lines into a header record; blank lines are skipped.
+ * @param text - the editor's one-header-per-line text; a line without a name
+ *   before `:` is skipped, and both sides are trimmed.
+ * @returns the parsed headers; a repeated name keeps its last value.
+ */
 export function parseHeaders(text: string): Record<string, string> {
   const out: Record<string, string> = {}
   for (const line of text.split('\n')) {
@@ -113,7 +135,11 @@ export function parseHeaders(text: string): Record<string, string> {
   return out
 }
 
-/** Serialize a header record back to `Key: Value` lines. */
+/**
+ * Serialize a header record back to `Key: Value` lines.
+ * @param headers - the entry's headers; absent is the empty record.
+ * @returns one `Key: Value` line per header.
+ */
 export function formatHeaders(headers: Record<string, string> | undefined): string {
   return Object.entries(headers ?? {}).map(([key, value]) => `${key}: ${value}`).join('\n')
 }
@@ -134,7 +160,12 @@ export interface ServerEditorDraft {
   enabled: boolean
 }
 
-/** Initialize the editor draft from an entry (blank when adding). */
+/**
+ * Initialize the editor draft from an entry (blank when adding).
+ * @param serverName - the edited server's settings key; absent when adding.
+ * @param entry - the stored entry; absent yields a blank stdio draft.
+ * @returns the draft the editor fields bind to.
+ */
 export function draftFrom(serverName: string | undefined, entry: McpServerEntryView | undefined): ServerEditorDraft {
   return {
     serverName: serverName ?? '',
@@ -154,6 +185,9 @@ export function draftFrom(serverName: string | undefined, entry: McpServerEntryV
  * The entry a draft resolves to; `problem` names the first missing or invalid
  * field. The serverName pattern mirrors the manager's settings validation, so
  * a draft that passes here also passes the seam's section validation.
+ * @param draft - the editor's current field state.
+ * @returns the resolved entry, and `problem` as the first rejection reason or
+ *   `undefined` when every field is usable.
  */
 export function entryFrom(draft: ServerEditorDraft): { entry: McpServerEntryView; problem: string | undefined } {
   const serverName = draft.serverName.trim()

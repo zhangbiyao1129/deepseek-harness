@@ -8,7 +8,7 @@
 
 ## 问题
 
-`dsh-mcp-client` 存在但从未接线：[已交付工具清单决策](2026-07-31-even-out-shipped-tool-rosters.md) 有意将其从交付行中扣留——每个服务器的组合行必须点名一个第三方服务器并在每次启动时 spawn，而「让 MCP 成为默认的那一层」（读取用户服务器清单、按条目逐台挂载客户端的桥接）尚不存在。因此运行时完全没有 MCP 能力，Web UI 也无法添加自定义服务器，唯一路径是每个服务器编辑 `cordis.yml` 并重启。
+`dsh-mcp-client` 存在但从未接线：[已交付工具清单决策](../feature/2026-07-31-even-out-shipped-tool-rosters.md) 有意将其从交付行中扣留——每个服务器的组合行必须点名一个第三方服务器并在每次启动时 spawn，而「让 MCP 成为默认的那一层」（读取用户服务器清单、按条目逐台挂载客户端的桥接）尚不存在。因此运行时完全没有 MCP 能力，Web UI 也无法添加自定义服务器，唯一路径是每个服务器编辑 `cordis.yml` 并重启。
 
 ## 决策
 
@@ -19,6 +19,12 @@
 **状态走只读快照，配置走现有 settings 域。** 管理器提供 `ctx.mcpManager`（`list()`），每次调和完成后发出携带相同快照的 `mcp/synced`，并暴露一个新 wire 方法（`mcp.list`），不提供写入面——配置写入走现有 `settings.*` 方法，这些方法已带修订冲突检测和接缝校验。`mcp` 命名空间加入 `WEB_SETTINGS_NAMESPACES` 允许列表——这个显式闸门保证注册插件不会默认变得可被远程写入。
 
 **Web 页面是一个设置分区，而非新的外壳。** `ui-settings-mcp` 注册一个 `settings.section` 条目（order 20，位于 Models 之后），渲染两个域合并的快照：来自 `settings.describe` 的 `mcp` 命名空间视图，加上来自 `mcp.list` 的状态快照。一张手写编辑器卡片服务两种传输方式，本地校验镜像管理器的段校验；保存以 `settings.mutate` 路径操作落地（重命名是单次 mutate 中的原子 unset + set）。页面遵循 Models 页面的失效接线：转发的 `settings/document-updated` 加 `connection/reset` 无需轮询即可收敛。
+
+## 影响
+
+MCP 服务器从组合事实变成用户设置：在 Web 页面上添加、编辑或禁用一台服务器即就地收敛，无需编辑 `cordis.yml`，也无需重启。代价是管理器持有一份组合文件不再描述的挂载生命周期——读 `cordis.yml` 已无法得知一个会话会有哪些 MCP 服务器，`ctx.mcpManager` 与 `mcp/synced` 是"什么已挂载"的唯一权威。激活失败的服务器记为 `error` 状态而非启动失败，因此一台坏掉的第三方服务器只降级它自己那一条，不影响会话。
+
+暴露面在两处保持显式，且必须同步变更：本包配置白名单中的 `mcp` 命名空间，以及 `mcp.list` wire 方法。将来由其他插件注册的命名空间在加入那里之前，客户端仍然无法访问。
 
 ## 备选方案
 

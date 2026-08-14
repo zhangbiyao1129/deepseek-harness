@@ -4,7 +4,7 @@
  * a real Loader tree, kept live through transactional HMR.
  */
 
-import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { pathToFileURL } from 'node:url'
@@ -25,15 +25,41 @@ const NAME = 'dsh-test-bin'
 
 const tmp = (): string => mkdtempSync(join(tmpdir(), 'dsh-user-patches-'))
 
-async function eventually(test: () => boolean, message: string): Promise<void> {
+
+/**
+ * Await a watcher-delivered condition, re-running its triggering filesystem
+ * edit between polls. One edit plus a fixed settle sleep is not sufficient on a
+ * loaded host: Chokidar's change throttle and filesystem mtime granularity can
+ * fold two nearby edits into a single event, which leaves the awaited
+ * notification permanently absent rather than merely late.
+ * @param test - the condition the awaited notification satisfies.
+ * @param trigger - re-runs the edit; receives the 1-based attempt number.
+ * @param message - thrown when the deadline passes with the condition unmet.
+ */
+async function retriggerUntil(
+  test: () => boolean,
+  trigger: (attempt: number) => void,
+  message: string,
+): Promise<void> {
   const deadline = Date.now() + 10_000
-  while (!test()) {
+  for (let attempt = 1; !test(); attempt += 1) {
     if (Date.now() >= deadline) throw new Error(message)
-    await new Promise(resolve => setTimeout(resolve, 10))
+    trigger(attempt)
+    // Wide enough for a throttle window to close between attempts, short
+    // enough that the deadline still allows many of them.
+    await new Promise(resolve => setTimeout(resolve, 250))
   }
 }
 
-const settleChokidarChangeThrottle = (): Promise<void> => new Promise(resolve => setTimeout(resolve, 75))
+/**
+ * A patch document whose parsed content is fixed but whose bytes differ per
+ * attempt, so a repeated write cannot be deduplicated by size or mtime. The
+ * varying part is a YAML comment and therefore invisible to the loader.
+ * @param body - the patch document under test.
+ * @param attempt - the 1-based attempt number.
+ * @returns the document with an attempt-tagged trailing comment.
+ */
+const tagged = (body: string, attempt: number): string => `${body}# attempt ${String(attempt)}\n`
 
 describe('loadOptionalPatches', () => {
   afterEach(() => {
@@ -330,38 +356,57 @@ describe('boot with user patches', () => {
       compose: userPatches => [...basePatches, ...userPatches],
     })
     try {
-      writeFileSync(filename, '- id: noop\n  config:\n    value: live\n')
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'live', 'user patch addition was not applied')
+      await retriggerUntil(
+        () => (entryConfig(ctx, 'noop') as { value?: string }).value === 'live',
+        (attempt) => { writeFileSync(filename, tagged('- id: noop\n  config:\n    value: live\n', attempt)) },
+        'user patch addition was not applied',
+      )
 
-      writeFileSync(filename, '- id: noop\n  config:\n    fail: true\n')
-      await eventually(() => failures.length === 1, 'failed candidate was not broadcast')
+      await retriggerUntil(
+        () => failures.length === 1,
+        (attempt) => { writeFileSync(filename, tagged('- id: noop\n  config:\n    fail: true\n', attempt)) },
+        'failed candidate was not broadcast',
+      )
       expect(failures[0]).toMatchObject({ filename })
       expect(failures[0]?.error).toBeInstanceOf(Error)
       expect((entryConfig(ctx, 'noop') as { value?: string }).value).toBe('live')
-      await settleChokidarChangeThrottle()
 
-      writeFileSync(filename, 'invalid: [unclosed\n')
-      await eventually(() => failures.length === 2, 'parse failure was not broadcast')
+      await retriggerUntil(
+        () => failures.length === 2,
+        (attempt) => { writeFileSync(filename, tagged('invalid: [unclosed\n', attempt)) },
+        'parse failure was not broadcast',
+      )
       expect(failures[1]?.error).toBeInstanceOf(Error)
       expect((entryConfig(ctx, 'noop') as { value?: string }).value).toBe('live')
-      await settleChokidarChangeThrottle()
 
-      writeFileSync(filename, '- id: noop\n  config:\n    value: recovered\n')
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'recovered', 'valid recovery was not applied')
-      await settleChokidarChangeThrottle()
+      await retriggerUntil(
+        () => (entryConfig(ctx, 'noop') as { value?: string }).value === 'recovered',
+        (attempt) => { writeFileSync(filename, tagged('- id: noop\n  config:\n    value: recovered\n', attempt)) },
+        'valid recovery was not applied',
+      )
 
-      unlinkSync(filename)
-      await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'generated', 'user patch removal did not restore the app-owned patch')
+      // Removal has no varying-content form: the retry re-establishes absence
+      // after a write that guarantees the watcher sees a distinct event pair.
+      await retriggerUntil(
+        () => (entryConfig(ctx, 'noop') as { value?: string }).value === 'generated',
+        (attempt) => {
+          if (existsSync(filename)) unlinkSync(filename)
+          else writeFileSync(filename, tagged('- id: noop\n  config:\n    value: recovered\n', attempt))
+        },
+        'user patch removal did not restore the app-owned patch',
+      )
       expect(failures).toHaveLength(2)
-      await settleChokidarChangeThrottle()
 
       // Default compose: the user layer IS the whole patch list, so a
       // fresh generation replaces the app-owned layer instead of stacking on it.
       await dispose()
       const disposeDefault = await watchUserPatches(ctx, { binName: NAME, filename })
       try {
-        writeFileSync(filename, '- id: noop\n  config:\n    value: identity\n')
-        await eventually(() => (entryConfig(ctx, 'noop') as { value?: string }).value === 'identity', 'default-compose user patch was not applied')
+        await retriggerUntil(
+          () => (entryConfig(ctx, 'noop') as { value?: string }).value === 'identity',
+          (attempt) => { writeFileSync(filename, tagged('- id: noop\n  config:\n    value: identity\n', attempt)) },
+          'default-compose user patch was not applied',
+        )
       } finally {
         await disposeDefault()
       }

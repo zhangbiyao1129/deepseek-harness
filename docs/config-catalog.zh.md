@@ -1291,6 +1291,48 @@ export interface ReconnectConfig {
 
 来源：[`packages/mcp/mcp-client/src/index.ts:98`](../packages/mcp/mcp-client/src/index.ts)
 
+<a id="deepseek-aidsh-mcp-manager"></a>
+
+## `@deepseek-ai/dsh-mcp-manager`
+
+```ts config-catalog
+/** The `mcp:` section: a map of `serverName` to server entry. */
+export interface ManagerConfig {
+  /** Configured servers keyed by `serverName`; the key is the mcp-client instance name and the tool-namespace prefix. */
+  servers: Record<string, ServerEntry>
+}
+
+/** Settings schema for one MCP server entry; mirrors the mcp-client Config minus `serverName`. */
+export interface ServerEntry {
+  /** Selects child-process stdio or Streamable HTTP transport. */
+  transport: 'stdio' | 'streamable-http'
+  /** Executable used to start the server (stdio; required by {@link validateSection}). */
+  command?: string
+  /** Arguments passed directly, without shell interpolation (stdio). */
+  args: string[]
+  /** Extra env vars merged on top of scrubbed ambient env (stdio). */
+  env: Record<string, string>
+  /** Working directory for the child process (stdio). */
+  cwd: string
+  /** MCP endpoint URL (streamable-http; required by {@link validateSection}). */
+  url?: string
+  /** Additional headers attached to MCP requests (streamable-http). */
+  headers: Record<string, string>
+  /** Per-tool-call timeout in milliseconds. */
+  toolCallTimeoutMs: number
+  /** Fail the instance when the initial connection or tool synchronization fails. */
+  failOnStartupError: boolean
+  /** Automatic reconnect policy; omission uses the mcp-client defaults. */
+  reconnect?: ReconnectConfig
+  /** When false the entry is kept in the document but never mounted. */
+  enabled: boolean
+}
+```
+
+依赖：[`ReconnectConfig`](../packages/mcp/mcp-client/src/index.ts)
+
+来源：[`packages/mcp/mcp-manager/src/index.ts:90`](../packages/mcp/mcp-manager/src/index.ts)
+
 <a id="deepseek-aidsh-message-feedback"></a>
 
 ## `@deepseek-ai/dsh-message-feedback`
@@ -3062,6 +3104,7 @@ export interface Config {
 - `@deepseek-ai/dsh-client-ui-plan`（[`packages/client/ui-plan/src/index.ts`](../packages/client/ui-plan/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings`（[`packages/client/ui-settings/src/index.ts`](../packages/client/ui-settings/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-general`（[`packages/client/ui-settings-general/src/index.ts`](../packages/client/ui-settings-general/src/index.ts)）
+- `@deepseek-ai/dsh-client-ui-settings-mcp`（[`packages/client/ui-settings-mcp/src/index.ts`](../packages/client/ui-settings-mcp/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-models`（[`packages/client/ui-settings-models/src/index.ts`](../packages/client/ui-settings-models/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugin-inventory`（[`packages/client/ui-settings-plugin-inventory/src/index.ts`](../packages/client/ui-settings-plugin-inventory/src/index.ts)）
 - `@deepseek-ai/dsh-client-ui-settings-plugins`（[`packages/client/ui-settings-plugins/src/index.ts`](../packages/client/ui-settings-plugins/src/index.ts)）
