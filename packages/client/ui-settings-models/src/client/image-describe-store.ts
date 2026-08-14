@@ -201,8 +201,10 @@ export class ImageDescribeStore {
    * Save the vision-model section and, when a standalone API key was typed,
    * the credential it references. The key write is best-effort-second: the
    * section records the reference unconditionally, and a failed key write is
-   * reported so the user can retry the key alone.
-   * @param section - the section to store (replaces the user layer).
+   * reported so the user can retry the key alone. The section is merged
+   * (update), never replaced, so fields this page does not edit — timeoutMs,
+   * maxTokens, anything else in settings.yaml — survive the save.
+   * @param section - the section fields to store.
    * @param apiKey - a new standalone key to store, or undefined to keep/omit.
    * @returns the failure message, or undefined once both writes landed.
    */
@@ -215,9 +217,9 @@ export class ImageDescribeStore {
       systemPrompt: section.systemPrompt,
     }
     try {
-      const response = await this.api.settings.replace({
+      const response = await this.api.settings.update({
         ns: IMAGE_DESCRIBE_NS,
-        section: patch,
+        patch,
         expectedRevision: this.store.getSnapshot().revision,
       })
       if (!response.result.ok) return response.result.error.message

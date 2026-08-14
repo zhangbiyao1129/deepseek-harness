@@ -113,7 +113,7 @@ describe('ImageDescribeStore', () => {
       'llm.providers': () => ok({ providers: DIRECTORY }),
       'llm.models': () => ok({ groups: [], failures: [] }),
       'credentials.describe': () => ok({ credentials: {} }),
-      'settings.replace': () => ok({ ...VISION_NAMESPACE, revision: 4 }),
+      'settings.update': () => ok({ ...VISION_NAMESPACE, revision: 4 }),
       'credentials.set': () => ok({ ref: IMAGE_DESCRIBE_KEY_REF, configured: true }),
     })
     const store = new ImageDescribeStore(stub.api as never)
@@ -126,10 +126,10 @@ describe('ImageDescribeStore', () => {
       systemPrompt: '',
     }, 'new-key')
     expect(outcome).toBeUndefined()
-    const replace = stub.calls.find(call => call.method === 'settings.replace')
+    const replace = stub.calls.find(call => call.method === 'settings.update')
     expect(replace?.payload).toMatchObject({
       ns: 'image-describe',
-      section: { enabled: true, apiKeyEnv: IMAGE_DESCRIBE_KEY_REF, model: 'vl' },
+      patch: { enabled: true, apiKeyEnv: IMAGE_DESCRIBE_KEY_REF, model: 'vl' },
       expectedRevision: 3,
     })
     const set = stub.calls.find(call => call.method === 'credentials.set')
@@ -142,7 +142,7 @@ describe('ImageDescribeStore', () => {
       'llm.providers': () => ok({ providers: DIRECTORY }),
       'llm.models': () => ok({ groups: [], failures: [] }),
       'credentials.describe': () => ok({ credentials: {} }),
-      'settings.replace': () => fail('enabled but missing baseURL'),
+      'settings.update': () => fail('enabled but missing baseURL'),
     })
     const store = new ImageDescribeStore(stub.api as never)
     await store.load()
@@ -151,5 +151,43 @@ describe('ImageDescribeStore', () => {
     }, 'new-key')
     expect(outcome).toBe('enabled but missing baseURL')
     expect(stub.calls.some(call => call.method === 'credentials.set')).toBe(false)
+  })
+
+  it('merges the save into the existing section instead of replacing it', async () => {
+    const stub = apiStub({
+      'settings.describe': () => ok({
+        writable: true,
+        hasDocument: true,
+        namespaces: [{
+          ...VISION_NAMESPACE,
+          value: { ...VISION_NAMESPACE.value, timeoutMs: 120000, maxTokens: 2048 },
+          user: { ...VISION_NAMESPACE.user, timeoutMs: 120000, maxTokens: 2048 },
+        }, PI_AI_NAMESPACE],
+      }),
+      'llm.providers': () => ok({ providers: DIRECTORY }),
+      'llm.models': () => ok({ groups: [], failures: [] }),
+      'credentials.describe': () => ok({ credentials: {} }),
+      'settings.update': () => ok({ ...VISION_NAMESPACE, revision: 4 }),
+    })
+    const store = new ImageDescribeStore(stub.api as never)
+    await store.load()
+    const outcome = await store.save({
+      enabled: true, baseURL: 'https://vision.example/v1', apiKeyEnv: IMAGE_DESCRIBE_KEY_REF, model: 'vl', systemPrompt: '',
+    }, undefined)
+    expect(outcome).toBeUndefined()
+    const update = stub.calls.find(call => call.method === 'settings.update')
+    // The patch names only the fields this page edits; timeoutMs/maxTokens
+    // written directly in settings.yaml survive the merge.
+    expect(update?.payload).toEqual({
+      ns: 'image-describe',
+      patch: {
+        enabled: true,
+        baseURL: 'https://vision.example/v1',
+        apiKeyEnv: IMAGE_DESCRIBE_KEY_REF,
+        model: 'vl',
+        systemPrompt: '',
+      },
+      expectedRevision: 3,
+    })
   })
 })

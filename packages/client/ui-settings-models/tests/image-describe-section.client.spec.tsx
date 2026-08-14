@@ -111,7 +111,7 @@ describe('ImageDescribeSection', () => {
   it('saves the section and a custom key through the wire', async () => {
     const { calls, view } = harness({
       ...readyWire(),
-      'settings.replace': () => ok({ ...NAMESPACES[0], revision: 1 }),
+      'settings.update': () => ok({ ...NAMESPACES[0], revision: 1 }),
       'credentials.set': () => ok({ ref: IMAGE_DESCRIBE_KEY_REF, configured: true }),
     })
     await waitFor(() => {
@@ -124,10 +124,10 @@ describe('ImageDescribeSection', () => {
     await act(async () => {
       fireEvent.click(screen.getByRole('button', { name: en.apply }))
     })
-    const replace = calls.find(call => call.method === 'settings.replace')
+    const replace = calls.find(call => call.method === 'settings.update')
     expect(replace?.payload).toMatchObject({
       ns: 'image-describe',
-      section: { enabled: true, model: 'vl-max', apiKeyEnv: IMAGE_DESCRIBE_KEY_REF },
+      patch: { enabled: true, model: 'vl-max', apiKeyEnv: IMAGE_DESCRIBE_KEY_REF },
     })
     const set = calls.find(call => call.method === 'credentials.set')
     expect(set?.payload).toEqual({ ref: IMAGE_DESCRIBE_KEY_REF, value: 'new-secret' })
@@ -137,10 +137,30 @@ describe('ImageDescribeSection', () => {
     view.unmount()
   })
 
+  it('disabling the section saves enabled=false with the stored values', async () => {
+    const stored = NAMESPACES[0]!
+    const { calls, view } = harness({
+      ...readyWire(),
+      'settings.update': () => ok({ ...stored, value: { ...stored.value, enabled: false }, revision: 1 }),
+    })
+    await waitFor(() => {
+      expect(screen.getByLabelText(en.baseUrl)).toBeTruthy()
+    })
+    fireEvent.click(screen.getByLabelText(en.visionEnabled))
+    await waitFor(() => {
+      const update = calls.find(call => call.method === 'settings.update')
+      expect(update?.payload).toMatchObject({
+        ns: 'image-describe',
+        patch: { enabled: false, baseURL: 'https://vision.example/v1', model: 'vl' },
+      })
+    })
+    view.unmount()
+  })
+
   it('shows a rejected write as a failure', async () => {
     const { view } = harness({
       ...readyWire(),
-      'settings.replace': () => fail('enabled but missing baseURL'),
+      'settings.update': () => fail('enabled but missing baseURL'),
     })
     await waitFor(() => {
       expect(screen.getByLabelText(en.baseUrl)).toBeTruthy()

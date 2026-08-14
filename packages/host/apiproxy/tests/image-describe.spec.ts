@@ -190,6 +190,22 @@ describe('describeImage', () => {
     }
   })
 
+  it('reads at most a bounded error body on an HTTP failure', async () => {
+    process.env.VISION_KEY = 'secret'
+    const huge = 'x'.repeat(1024 * 1024)
+    const fetchSpy = vi.spyOn(globalThis, 'fetch').mockResolvedValue(new Response(huge, { status: 500 }))
+    try {
+      const failure = await describeImage(new Context(), SECTION, new Uint8Array([1]), 'image/png')
+        .catch((error: unknown) => error)
+      expect(failure).toBeInstanceOf(ImageDescribeError)
+      // The message carries a bounded slice of the error body, never the whole payload.
+      expect((failure as ImageDescribeError).message.length).toBeLessThan(1024)
+    } finally {
+      delete process.env.VISION_KEY
+      fetchSpy.mockRestore()
+    }
+  })
+
   it('maps a network rejection to NETWORK_ERROR', async () => {
     process.env.VISION_KEY = 'secret'
     const fetchSpy = vi.spyOn(globalThis, 'fetch').mockRejectedValue(new Error('ECONNREFUSED'))

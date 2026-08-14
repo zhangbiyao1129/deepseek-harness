@@ -54,6 +54,9 @@ export const DEFAULT_IMAGE_DESCRIBE_MAX_TOKENS = 1024
 /** Response body cap for one vision call, in bytes. */
 const MAX_DESCRIBE_RESPONSE_BYTES = 4 * 1024 * 1024
 
+/** Error-body detail cap for one vision call, in bytes. */
+const MAX_DESCRIBE_ERROR_BODY_BYTES = 4 * 1024
+
 /** Schema of the `image-describe` settings section. */
 export const IMAGE_DESCRIBE_SETTINGS_SCHEMA: z<ImageDescribeSettings> = z.object({
   enabled: z.boolean(),
@@ -145,6 +148,25 @@ async function readCappedText(response: Response): Promise<string> {
   return Buffer.concat(chunks).toString('utf8')
 }
 
+/** Read at most {@link MAX_DESCRIBE_ERROR_BODY_BYTES} bytes of an error body. */
+async function readErrorBody(response: Response): Promise<string> {
+  const reader = response.body?.getReader()
+  if (reader === undefined) return ''
+  const chunks: Uint8Array[] = []
+  let total = 0
+  for (;;) {
+    const { done, value } = await reader.read()
+    if (done) break
+    total += value.byteLength
+    if (total > MAX_DESCRIBE_ERROR_BODY_BYTES) {
+      await reader.cancel()
+      break
+    }
+    chunks.push(value)
+  }
+  return Buffer.concat(chunks).toString('utf8')
+}
+
 /** Normalize one endpoint root to the chat-completions URL. */
 function chatCompletionsUrl(baseURL: string): string {
   const root = baseURL.trim().replace(/\/+$/, '')
@@ -230,7 +252,7 @@ export async function describeImage(
   }
 
   if (!response.ok) {
-    const detail = await response.text().catch(() => '')
+    const detail = await readErrorBody(response)
     throw new ImageDescribeError(
       `识图模型请求失败（HTTP ${response.status}${detail.length > 0 ? `：${detail.slice(0, 200)}` : ''}）`,
       'HTTP_ERROR',

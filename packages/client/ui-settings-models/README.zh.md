@@ -22,7 +22,7 @@ pi-ai profile 的 `models` 列表就在卡片上编辑：一行一个模型，�
 
 ## 识图模型分区
 
-同一插件还注册了第二个 `settings.section` 条目（`image-describe`），用于配置准入时把对话框图片转成文字描述的识图模型。两种模式共用一张表单：**复用已注册提供方**（提供方选择器从该提供方的 `llm-pi-ai` profile 物化 `baseURL` 与 `apiKeyEnv`，不再索要第二个密钥）或**自定义接口**（`baseURL` 加经 `credentials.set` 存入派生引用 `IMAGE_DESCRIBE_API_KEY` 的 API 密钥）。模型 ID 输入框把所选提供方的目录作为 datalist 提供；描述指令字段留空时使用宿主内置提示。启用会整段写入，因此配置不完整会被宿主校验器以 `settings-rejected` 拒绝并点名缺失字段。该分区与 Models 页共用同一批转发设置/凭据/拓扑失效通知重载。
+同一插件还注册了第二个 `settings.section` 条目（`image-describe`），用于配置准入时把对话框图片转成文字描述的识图模型。两种模式共用一张表单：**复用已注册提供方**（提供方选择器从该提供方的 `llm-pi-ai` profile 物化 `baseURL` 与 `apiKeyEnv`，不再索要第二个密钥）或**自定义接口**（`baseURL` 加经 `credentials.set` 存入派生引用 `IMAGE_DESCRIBE_API_KEY` 的 API 密钥）。模型 ID 输入框把所选提供方的目录作为 datalist 提供；描述指令字段留空时使用宿主内置提示。保存是合并写入（`settings.update`），本页不编辑的字段——`timeoutMs`、`maxTokens` 及 `settings.yaml` 中手写的其他内容——都会保留；启用状态下配置不完整会被宿主校验器以 `settings-rejected` 拒绝并点名缺失字段。该分区与 Models 页共用同一批转发设置/凭据/拓扑失效通知重载。
 
 ## 模型体验
 
