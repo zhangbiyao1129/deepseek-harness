@@ -43,6 +43,7 @@ describe('attachment rejection copy', () => {
   it('maps user-solvable reasons to limit-naming copy', () => {
     expect(attachmentErrorText(t, 'MODEL_DOES_NOT_SUPPORT_IMAGES')).toBe('当前模型不支持图片，请切换支持图片的模型')
     expect(attachmentErrorText(t, 'SUBAGENT_IMAGE_UNSUPPORTED')).toBe('子智能体会话暂不支持图片')
+    expect(attachmentErrorText(t, 'VISION_DESCRIBE_FAILED')).toBe('图片识别失败，请重试或检查识图模型配置')
     expect(attachmentErrorText(t, 'IMAGE_TOO_MANY_PIXELS')).toBe('图片分辨率过大，请压缩后重试')
     expect(attachmentErrorText(t, 'INVALID_IMAGE')).toBe('仅支持 PNG、JPG、WebP、GIF 格式的图片')
     expect(attachmentErrorText(t, 'IMAGE_TYPE_MISMATCH')).toBe('仅支持 PNG、JPG、WebP、GIF 格式的图片')
@@ -50,6 +51,7 @@ describe('attachment rejection copy', () => {
     expect(attachmentErrorText(t, 'IMAGE_TOO_LARGE', limits)).toBe('单张图片不能超过 5MB')
     expect(attachmentErrorText(t, 'IMAGES_TOO_LARGE', limits)).toBe('图片总大小超过 100MB，请移除部分图片')
     expect(attachmentErrorText(enT, 'TOO_MANY_IMAGES', limits)).toBe('A message can include up to 20 images')
+    expect(attachmentErrorText(enT, 'VISION_DESCRIBE_FAILED')).toBe('Image recognition failed; check the vision model settings and retry')
   })
 
   it('folds unknown reasons and limit reasons without projected limits into the send-failed line', () => {

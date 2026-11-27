@@ -267,6 +267,13 @@ function joinInvariantStartup(
       throw error
     }
   })
+  // Awaiting the wrapper is optional: a caller may join the raw fiber through
+  // `await()` instead (the established alternative in product code), which
+  // leaves this chain with no attached handler. Marking it observed keeps an
+  // unawaited wrapper from surfacing as an unhandled rejection; `joined.then`
+  // below still delivers the identical rejection to a caller that awaits it,
+  // so no failure becomes invisible.
+  readiness.catch(() => {})
   const joined = Object.create(fiber) as PluginFiber
   joined.then = readiness.then.bind(readiness)
   return joined

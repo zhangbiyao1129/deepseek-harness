@@ -660,6 +660,43 @@ describe('provider profile lifecycle', () => {
     expect(server.requests[0]).not.toHaveProperty('reasoning_effort')
   })
 
+  it('keeps the system prompt on the system role when the endpoint refuses developer', async () => {
+    vi.stubEnv('PI_TEST_KEY', 'test-key')
+    const server = await mockServer([{ events: textEvents }, { events: textEvents }])
+    const ctx = new Context()
+    await ctx.plugin(LlmRuntime)
+    const route = (compat: Record<string, boolean> | undefined): Record<string, unknown> => ({
+      apiKeyEnv: 'PI_TEST_KEY',
+      api: 'openai-completions',
+      baseURL: `${server.url}/v1`,
+      ...compat === undefined ? {} : { compat },
+      models: [{
+        id: 'acme-think',
+        contextWindow: 65_536,
+        maxTokens: 4096,
+        reasoningEfforts: { off: null, high: 'high' },
+      }],
+    })
+    await ctx.plugin(LlmPiAi, {
+      providers: { 'acme-guess': route(undefined), 'acme-system': route({ supportsDeveloperRole: false }) },
+    })
+    const prompt = (provider: string): Promise<unknown> => assemble(ctx, {
+      provider,
+      model: 'acme-think',
+      system: 'be brief',
+      messages: [],
+    })
+
+    // A private gateway's URL matches none of pi-ai's non-standard markers, so
+    // its guess is that `developer` is accepted — and declaring reasoning is
+    // alone enough to rename the role, no thinking level requested here.
+    await prompt('acme-guess')
+    expect(server.requests[0]).toMatchObject({ messages: [{ role: 'developer', content: 'be brief' }] })
+
+    await prompt('acme-system')
+    expect(server.requests[1]).toMatchObject({ messages: [{ role: 'system', content: 'be brief' }] })
+  })
+
   it('accepts absent credentials for pi-ai ambient authentication', async () => {
     vi.stubEnv('DEEPSEEK_API_KEY', 'ambient-key')
     const server = await mockServer([{ events: textEvents }])

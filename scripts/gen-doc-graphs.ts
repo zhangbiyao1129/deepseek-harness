@@ -115,6 +115,14 @@ const SERVICE_ROLES: ServiceRole[] = [
     note: 'Adapters register provider implementations; the loop and compaction call the provider-neutral stream service.',
   },
   {
+    key: 'mcpManager',
+    pkg: 'mcp-manager',
+    title: 'MCP server activation status',
+    mode: 'core',
+    consumers: ['host-apiproxy'],
+    note: 'Reconciles the `mcp:` settings section into mounted mcp-client instances and publishes the per-server activation snapshot the web configuration page reads.',
+  },
+  {
     key: 'tokenMeter',
     pkg: 'token-meter',
     title: 'Replay token measurement',

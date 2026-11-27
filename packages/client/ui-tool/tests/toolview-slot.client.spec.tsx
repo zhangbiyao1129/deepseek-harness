@@ -10,7 +10,7 @@
 // the declaration then land through slots.inject when the chat entry appears.
 
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
-import { cleanup } from '@testing-library/react'
+import { cleanup, fireEvent } from '@testing-library/react'
 import type { ISession, SessionId, ToolResultNode } from '@deepseek-ai/dsh-client-runtime/client'
 import type { PropsRenderSlots } from '@deepseek-ai/dsh-client-ui-slots'
 import { SlotTestRuntime, stubSettingsScope } from '@deepseek-ai/dsh-client-test-runtime'
@@ -114,9 +114,13 @@ describe('keyed toolview hole through the real machinery', () => {
     ])
     const view = b.runtime.renderRoot()
 
-    // Every one of these rows is user-visible on each model define/run, so each
-    // names its act and carries the package id rather than falling back to the
-    // generic "Tool call · <name> · <id>" row.
+    // The conversation view folds a run of consecutive tool calls behind its
+    // latest two rows; expanding it restores every row so each can be asserted
+    // for its act-and-package-id title rather than the generic
+    // "Tool call · <name> · <id>" row.
+    const fold = view.container.querySelector('[data-tool-run] button')
+    expect(fold).not.toBeNull()
+    fireEvent.click(fold!)
     const rowText = (name: string) => view.container.querySelector(`[data-tool="${name}"]`)?.textContent
     expect(rowText('cordis_runtime_inspect')).toContain('Inspect')
     expect(rowText('cordis_run')).toContain('Run Cordis Plugindyn-2')

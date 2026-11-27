@@ -17,6 +17,7 @@ import z from '@deepseek-ai/schemastery'
 import type {} from '@deepseek-ai/dsh-agent-default-model'
 import type { ApiProxy } from './api/index.ts'
 import { createApiProxy, DEFAULT_COLD_BLANK_PROBE_MAX_BYTES } from './api-proxy.ts'
+import { installImageDescribeSettings } from './image-describe.ts'
 import {
   DEFAULT_SESSION_LOG_COMPRESSION_LEVEL,
   type SessionLogCompressionLevel,
@@ -89,12 +90,17 @@ export class ApiProxyService extends Service implements ApiProxy {
   readonly settings: ApiProxy['settings']
   readonly credentials: ApiProxy['credentials']
   readonly llm: ApiProxy['llm']
+  readonly mcp: ApiProxy['mcp']
   readonly events: ApiProxy['events']
   readonly downloads: ApiProxy['downloads']
   readonly respond: ApiProxy['respond']
 
   constructor(ctx: Context, config: Config) {
     super(ctx, 'apiProxy')
+    // The image-describe settings namespace rides this plugin's fiber: while a
+    // settings provider is mounted, the Web settings page can configure the
+    // vision model and the prompt admission converts images to descriptions.
+    installImageDescribeSettings(ctx)
     const api = createApiProxy(ctx, {
       defaultModelSelection: () => ctx.agentDefaultModel.currentSelection(),
       saveDefaultModelSelection: selection => ctx.agentDefaultModel.saveSelection(selection),
@@ -117,6 +123,7 @@ export class ApiProxyService extends Service implements ApiProxy {
     this.settings = api.settings
     this.credentials = api.credentials
     this.llm = api.llm
+    this.mcp = api.mcp
     this.events = api.events
     this.downloads = api.downloads
     // createApiProxy returns closures (no `this` capture), so the bind is

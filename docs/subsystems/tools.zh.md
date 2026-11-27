@@ -475,6 +475,22 @@ type ObjectJsonSchema = JsonSchemaNode & { type: 'object' }
 
 Generated from source by `scripts/gen-cordis-catalog.ts` (verified fresh by `pnpm run verify-cordis-catalog` in doc-sync; regenerate with `pnpm run gen-cordis-catalog`) — this section is byte-identical in both language sides of the page. Signature blocks use a `ts cordis-catalog` fence and keep the original source JSDoc; dispatch modes are defined in the [primer](../cordis-primer.md#dispatch-modes), and the framework-inherited `ctx` API lives in [cordis-api/inherited.md](../cordis-api/inherited.md).
 
+<a id="ctxmcpmanager--mcpmanagerservice"></a>
+
+### `ctx.mcpManager` — `McpManagerService`
+
+Status service for the web configuration page: the manager's per-server activation snapshot, read-only and process-local.
+
+```ts cordis-catalog
+/**
+ * Snapshot of every server's activation status.
+ * @returns one entry per configured-and-enabled server, in mount order.
+ */
+list(): McpServerStatusView[]
+```
+
+Source: [`packages/mcp/mcp-manager/src/index.ts:275`](../../packages/mcp/mcp-manager/src/index.ts)
+
 <a id="ctxtools--toolruntime"></a>
 
 ### `ctx.tools` — `ToolRuntime`
@@ -572,6 +588,30 @@ async execute(exec: ToolExecutionInput): Promise<ToolExecutionResult>
 Types: [ScopeKey](scope.md)
 
 Source: [`packages/core/tools/src/index.ts:787`](../../packages/core/tools/src/index.ts)
+
+<a id="mcp-events"></a>
+
+### `mcp/*` events
+
+<a id="mcpsynced--emit"></a>
+
+#### `mcp/synced` — emit
+
+Emitted after every reconcile settles (initial mount, a settings change, or a server activation failure), carrying the complete status snapshot. JSON-compatible payload: the web page and the invariant companion read the same authoritative view of what is mounted.
+
+```ts cordis-catalog
+/**
+ * Emitted after every reconcile settles (initial mount, a settings change,
+ * or a server activation failure), carrying the complete status snapshot.
+ * JSON-compatible payload: the web page and the invariant companion read
+ * the same authoritative view of what is mounted.
+ * @param statuses - one entry per configured-and-enabled server, in mount order.
+ * @mode emit
+ */
+'mcp/synced'(statuses: McpServerStatusView[]): void
+```
+
+Source: [`packages/mcp/mcp-manager/src/index.ts:307`](../../packages/mcp/mcp-manager/src/index.ts)
 
 <a id="tools-events"></a>
 

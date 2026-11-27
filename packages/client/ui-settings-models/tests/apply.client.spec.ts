@@ -50,17 +50,27 @@ describe('ui-settings-models apply', () => {
     const before = await bench()
     declare(before.slots)
     await before.ctx.plugin({ inject: [...inject], apply }).await()
-    const entry = before.slots.entries('settings.section')[0]!
+    const sections = before.slots.entries('settings.section')
+    expect(sections).toHaveLength(2)
+    const entry = sections[0]!
     expect(entry.component).toBe(ModelsSection)
     expect(entry.options).toMatchObject({ id: 'models', order: 10 })
+    expect(sections[1]!.options).toMatchObject({ id: 'image-describe', order: 20 })
     // The nav label is a locale-following thunk; owners resolve at read time.
     expect(resolveSlotLabel(entry.options.label)).toBe('模型')
+    expect(resolveSlotLabel(sections[1]!.options.label)).toBe('识图模型')
     const injected = (entry.inject as unknown as () => import('../src/client/ModelsSection.tsx').ModelsSectionInjected)()
     expect(injected.t('nav')).toBe('模型')
     expect(injected.t('deleteTitle')).toBe('删除 {provider}？')
     expect(typeof injected.controller.load).toBe('function')
     expect(typeof injected.useSnapshot).toBe('function')
     expect(injected.api).toBeDefined()
+    const imageDescribeInjected = (
+      sections[1]!.inject as unknown as
+      () => import('../src/client/ImageDescribeSection.tsx').ImageDescribeSectionInjected
+    )()
+    expect(typeof imageDescribeInjected.controller.load).toBe('function')
+    expect(typeof imageDescribeInjected.useSnapshot).toBe('function')
     const onboarding = before.slots.entries('settings.onboarding')
     expect(onboarding).toHaveLength(2)
     expect(onboarding.find(entry => entry.options.id === 'welcome-notice')).toMatchObject({
@@ -85,7 +95,7 @@ describe('ui-settings-models apply', () => {
     expect(after.slots.entries('settings.section')[0]!.component).toBe(ModelsSection)
     expect(after.slots.entries('settings.onboarding')).toHaveLength(2)
     // The self-inflicted ledger notifications hit the duplicate guard.
-    expect(after.slots.entries('settings.section')).toHaveLength(1)
+    expect(after.slots.entries('settings.section')).toHaveLength(2)
   })
 
   it('the label thunk follows the active locale without re-registration', async () => {
@@ -113,7 +123,7 @@ describe('ui-settings-models apply', () => {
     const b = await bench()
     const redeclare = declare(b.slots)
     await b.ctx.plugin({ inject: [...inject], apply }).await()
-    expect(b.slots.entries('settings.section')).toHaveLength(1)
+    expect(b.slots.entries('settings.section')).toHaveLength(2)
     // Declarer unload: the cascade removes our entry while our local
     // disposer variable goes stale.
     redeclare()
@@ -122,6 +132,7 @@ describe('ui-settings-models apply', () => {
     declare(b.slots)
     await Promise.resolve()
     expect(b.slots.entries('settings.section')[0]!.component).toBe(ModelsSection)
+    expect(b.slots.entries('settings.section')).toHaveLength(2)
     expect(b.slots.entries('settings.onboarding')).toHaveLength(2)
     // The locale path also recovers through the same ledger re-check.
     b.locale.setLocale('en')

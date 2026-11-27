@@ -15,6 +15,7 @@ import type { CredentialsApi } from './credentials.ts'
 import type { LlmApi } from './llm.ts'
 import type { SubagentsApi } from './subagents.ts'
 import type { RpcResponse } from './rpc.ts'
+import type { McpApi } from './mcp.ts'
 
 /**
  * Method name → method signature. Signatures are the single source of truth; payload/value
@@ -74,6 +75,7 @@ export interface RpcMethodMap {
   'llm.providers': LlmApi['providers']
   'llm.models': LlmApi['models']
   'llm.discoverModels': LlmApi['discoverModels']
+  'mcp.list': McpApi['list']
 }
 
 /** Business request payload of method K (reaches through the RpcRequest narrow form to payload). */

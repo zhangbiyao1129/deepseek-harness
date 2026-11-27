@@ -224,6 +224,10 @@ export class FakeApiClient implements IApiClient {
     discoverModels: payload => this.record('llm.discoverModels', payload, Promise.resolve(ok({ models: [] }))),
   }
 
+  readonly mcp: IApiClient['mcp'] = {
+    list: payload => this.record('mcp.list', payload, Promise.resolve(ok({ servers: [] }))),
+  }
+
   /** When true, streams never fire onOpen (misbehaving-carrier material for the handshake timeout guard). */
   suppressStreamOpen = false
 

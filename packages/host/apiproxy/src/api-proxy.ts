@@ -18,6 +18,9 @@ import type { ContentBlock, MessageSource } from '@deepseek-ai/dsh-llm'
 import { isAppendSurfaceEvent, isJsonValue } from '@deepseek-ai/dsh-session'
 import type { JsonValue, Session, SessionEvent, SessionEventMap, SessionHeader, SessionId, UserMessage } from '@deepseek-ai/dsh-session'
 import type { SessionPersistence } from '@deepseek-ai/dsh-session-persistence'
+// Type-only: makes the mcp-manager declaration merge visible so `ctx.get`
+// types its optional service instead of widening to `any`.
+import type {} from '@deepseek-ai/dsh-mcp-manager'
 import { SessionQueryError, type SessionSearchCursor } from '@deepseek-ai/dsh-session-query'
 import { SubagentError } from '@deepseek-ai/dsh-subagent'
 import type { SubagentListEntry as CatalogSubagentListEntry } from '@deepseek-ai/dsh-subagent'
@@ -81,6 +84,9 @@ import type {} from '@deepseek-ai/dsh-skill'
 import { SettingsConflictError, settingsNamespace } from '@deepseek-ai/dsh-settings'
 import type { SettingsDescriptor, SettingsNamespace, SettingsPathOp } from '@deepseek-ai/dsh-settings'
 import { credentialRef } from '@deepseek-ai/dsh-credentials'
+import {
+  describeImage, ImageDescribeError, imageDescribeSettingsOf, IMAGE_DESCRIBE_SETTINGS_NAMESPACE,
+} from './image-describe.ts'
 // Value edge: the rename impl narrows the title service's validation failure; the import also resolves `ctx.get('sessionTitle')`.
 import { SessionTitleInvalidError } from '@deepseek-ai/dsh-session-title'
 import type { CallId } from '@deepseek-ai/dsh-llm/brand'
@@ -124,7 +130,7 @@ const DEFAULT_MAX_MESSAGES = 50
  * is deferred work.
  */
 const WEB_SETTINGS_NAMESPACES = [
-  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek',
+  'agent-loop', 'shell', 'locale', 'permission', 'ui-conversation', 'ui-theme', 'web-search-deepseek', 'mcp',
 ] as const
 
 /** Provider work budget: at most 100 calls and 2,000 inspected hits. */
@@ -147,8 +153,18 @@ function decodeBase64(data: string): Uint8Array {
   return new Uint8Array(decoded)
 }
 
-/** Validate one prompt as a batch before publishing any durable image object. */
-async function durablePromptContent(ctx: Context, content: readonly PromptContentPart[]): Promise<ContentBlock[]> {
+/**
+ * Decode and validate one prompt's image parts against the attachment policy
+ * without persisting any bytes. Shared by the durable-save path and the
+ * vision-describe path so both enforce the same limits and image validity.
+ * @param ctx - the caller's context (attachment limits read live).
+ * @param content - the browser-submitted prompt parts.
+ * @returns ordered parts with decoded image bytes; text parts pass through unchanged.
+ */
+async function validatePromptImages(
+  ctx: Context,
+  content: readonly PromptContentPart[],
+): Promise<Array<{ type: 'text'; text: string } | { type: 'image'; part: PromptContentPart & { type: 'image' }; data: Uint8Array }>> {
   if (content.every(part => part.type === 'text')) {
     return content.map(part => ({ type: 'text', text: part.text }))
   }
@@ -157,9 +173,9 @@ async function durablePromptContent(ctx: Context, content: readonly PromptConten
     throw new AttachmentError('Prompt exceeds the configured image-count limit.', 'TOO_MANY_IMAGES')
   }
   const prepared = content.map(part => part.type === 'text'
-    ? part
-    : { part, data: decodeBase64(part.data) })
-  const images = prepared.filter((part): part is Extract<typeof part, { data: Uint8Array }> => 'data' in part)
+    ? { type: 'text' as const, text: part.text }
+    : { type: 'image' as const, part, data: decodeBase64(part.data) })
+  const images = prepared.filter((part): part is Extract<typeof prepared[number], { type: 'image' }> => part.type === 'image')
   const totalBytes = images.reduce((sum, image) => sum + image.data.byteLength, 0)
   if (totalBytes > limits.maxMessageImageBytes) {
     throw new AttachmentError('Prompt exceeds the configured aggregate image-byte limit.', 'IMAGES_TOO_LARGE')
@@ -171,9 +187,19 @@ async function durablePromptContent(ctx: Context, content: readonly PromptConten
       ...image.part.name === undefined ? {} : { name: image.part.name },
     })
   }
+  return prepared
+}
+
+/**
+ * Validate one prompt as a batch and publish every image as a durable
+ * attachment, in original order. The normal image path: each image becomes an
+ * `ImageBlock` referencing a content-addressed object.
+ */
+async function durablePromptContent(ctx: Context, content: readonly PromptContentPart[]): Promise<ContentBlock[]> {
+  const prepared = await validatePromptImages(ctx, content)
   const blocks: ContentBlock[] = []
   for (const item of prepared) {
-    if (!('data' in item)) {
+    if (item.type === 'text') {
       blocks.push({ type: 'text', text: item.text })
       continue
     }
@@ -183,6 +209,34 @@ async function durablePromptContent(ctx: Context, content: readonly PromptConten
       ...item.part.name === undefined ? {} : { name: item.part.name },
     })
     blocks.push({ type: 'image', attachment })
+  }
+  return blocks
+}
+
+/**
+ * Convert one prompt's images into vision-model descriptions and return a
+ * text-only durable content: each image becomes a `图片{i}描述：…` text block in
+ * its original position, and no image bytes, attachment reference, base64, or
+ * URL ever enters the session log. The vision model is called with the
+ * in-memory bytes; nothing is persisted.
+ * @param ctx - the caller's context (settings/credentials seams read live).
+ * @param content - the browser-submitted prompt parts.
+ * @returns text-only content blocks in original order.
+ * @throws {@link ImageDescribeError} when a vision call fails (nothing committed).
+ */
+async function describePromptContent(ctx: Context, content: readonly PromptContentPart[]): Promise<ContentBlock[]> {
+  const prepared = await validatePromptImages(ctx, content)
+  const settings = imageDescribeSettingsOf(ctx)
+  const blocks: ContentBlock[] = []
+  let imageIndex = 0
+  for (const item of prepared) {
+    if (item.type === 'text') {
+      blocks.push({ type: 'text', text: item.text })
+      continue
+    }
+    imageIndex++
+    const description = await describeImage(ctx, settings, item.data, item.part.mediaType)
+    blocks.push({ type: 'text', text: `图片${imageIndex}描述：${description}` })
   }
   return blocks
 }
@@ -251,9 +305,12 @@ function referencedImage(events: readonly SessionEvent[], attachmentId: string):
  * The agent-preset namespace carries one field — which preset a session with
  * no explicit choice is composed from — and both browser surfaces that offer
  * that choice write it through `settings.update`, so it has to cross the
- * configuration boundary or the pickers silently fail to persist.
+ * configuration boundary or the pickers silently fail to persist. The
+ * image-describe namespace carries the vision model that converts uploaded
+ * images into descriptions at prompt admission, and the Web settings page
+ * writes it.
  */
-const PRODUCT_SETTINGS_NAMESPACES = new Set(['ui-onboarding', AGENT_PRESET_SETTINGS_NAMESPACE])
+const PRODUCT_SETTINGS_NAMESPACES = new Set(['ui-onboarding', AGENT_PRESET_SETTINGS_NAMESPACE, IMAGE_DESCRIBE_SETTINGS_NAMESPACE])
 
 /** Strict browser-zone profile: UTC or an IANA Area/Location-style identifier. */
 const IANA_TIME_ZONE = /^[A-Za-z][A-Za-z0-9_+.-]*(?:\/[A-Za-z0-9_+.-]+)+$/
@@ -2483,6 +2540,17 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
         const admit = async (): Promise<RpcResponse<{ accepted: true }>> => {
           try {
             if (hasImage) {
+              if (imageDescribeSettingsOf(ctx).enabled === true) {
+                // Vision path: every image is converted to a description before
+                // the message is committed, so any main model can receive it and
+                // the session log carries only the description text. The image
+                // bytes live in memory for the vision call and nothing persists.
+                const durable = await describePromptContent(ctx, content)
+                const message: UserMessage = createUserMessage({ content: durable, source })
+                if (mode === 'steer') agent.steer(message)
+                else agent.followup(message)
+                return ok(request, { accepted: true as const })
+              }
               const current = selectionFor(agent).current
               const modelInfo = await ctx.llm.resolveModelInfo(current.provider, current.model)
               if (modelInfo.inputModalities !== undefined && !modelInfo.inputModalities.includes('image')) {
@@ -2498,6 +2566,13 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             if (mode === 'steer') agent.steer(message)
             else agent.followup(message)
           } catch (error: unknown) {
+            if (error instanceof ImageDescribeError) {
+              return err(request, {
+                code: 'attachment-error',
+                message: error.message,
+                details: { reason: 'VISION_DESCRIBE_FAILED' },
+              })
+            }
             if (error instanceof AttachmentError) {
               return err(request, {
                 code: 'attachment-error',
@@ -3423,6 +3498,19 @@ export function createApiProxy(ctx: Context, defaults: ApiProxyDefaults): ApiPro
             details: { settingsNs, ...baseURL === undefined ? {} : { baseURL } },
           })
         }
+      },
+    },
+
+    mcp: {
+      list(request) {
+        // The manager service is present whenever the mcp-manager plugin
+        // mounts; a deployment without it answers an empty list, which the
+        // settings descriptor lets the client tell apart from a zero-server
+        // section.
+        const manager = ctx.get('mcpManager')
+        return Promise.resolve(ok(request, {
+          servers: manager === undefined ? [] : manager.list(),
+        }))
       },
     },
 

@@ -9,7 +9,13 @@ import Loader from '@deepseek-ai/cordis-plugin-loader'
 import Timer from '@deepseek-ai/cordis-plugin-timer'
 import { describe, expect, it, vi } from 'vitest'
 
-async function bootHmr(dir: string, root: string[] = [], usePolling?: boolean): Promise<Context> {
+/**
+ * Boot a context with HMR over one directory.
+ * @param dir - the watched directory, also the context base URL.
+ * @param root - HMR module roots.
+ * @returns the booted context; the caller disposes its fiber.
+ */
+async function bootHmr(dir: string, root: string[] = []): Promise<Context> {
   const ctx = new Context()
   ctx.baseUrl = pathToFileURL(dir).href + '/'
   await ctx.plugin(Loader)
@@ -18,7 +24,6 @@ async function bootHmr(dir: string, root: string[] = [], usePolling?: boolean): 
     root,
     ignored: [],
     debounce: 0,
-    ...usePolling === undefined ? {} : { usePolling },
   })
   return ctx
 }
@@ -31,6 +36,32 @@ async function eventually(test: () => boolean, message: string): Promise<void> {
   }
 }
 
+/**
+ * Await a watcher notification whose triggering write may be coalesced away,
+ * re-running the trigger between polls. A single write plus a fixed sleep is
+ * not sufficient on a loaded host: Chokidar's atomic-write window and mtime
+ * granularity can fold two nearby writes into one event, which would leave the
+ * expected notification permanently absent rather than merely late.
+ * @param test - the condition the awaited notification satisfies.
+ * @param trigger - re-runs the write; receives the 1-based attempt number so it
+ *   can vary content and defeat size- and mtime-based deduplication.
+ * @param message - thrown when the deadline passes with the condition unmet.
+ */
+async function retriggerUntil(
+  test: () => boolean,
+  trigger: (attempt: number) => void,
+  message: string,
+): Promise<void> {
+  const deadline = Date.now() + 10_000
+  for (let attempt = 1; !test(); attempt += 1) {
+    if (Date.now() >= deadline) throw new Error(message)
+    trigger(attempt)
+    // Wide enough for a coalescing window to close between attempts, short
+    // enough that the deadline still allows many of them.
+    await new Promise(resolve => setTimeout(resolve, 250))
+  }
+}
+
 describe('HMR exact config paths', () => {
   it('observes module changes when its watch base is a filesystem alias', { timeout: 30_000 }, async () => {
     const target = mkdtempSync(join(tmpdir(), 'dsh-hmr-module-canonical-'))
@@ -40,7 +71,7 @@ describe('HMR exact config paths', () => {
     writeFileSync(aliasFilename, 'export const generation = 0\n')
     // This acceptance owns alias-to-cache identity. Other cases below exercise
     // native events; polling keeps Windows fs.watch queue pressure out of it.
-    const ctx = await bootHmr(alias, ['.'], true)
+    const ctx = await bootHmr(alias, ['.'])
     const filename = join(await realpath(target), 'module.ts')
     const expected = pathToFileURL(filename).href
     const cacheHas = vi.spyOn(ctx.loader.internal!.loadCache, 'has').mockReturnValue(false)
@@ -83,7 +114,7 @@ describe('HMR exact config paths', () => {
     }
   })
 
-  it('observes add, change, and unlink outside its module roots', { timeout: 20_000 }, async () => {
+  it('observes add, change, and unlink outside its module roots', { timeout: 30_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-hmr-config-'))
     const filename = join(dir, 'plugins.yml')
     const ctx = await bootHmr(dir)
@@ -109,7 +140,7 @@ describe('HMR exact config paths', () => {
     }
   })
 
-  it('observes creation when the config parent did not exist at registration', { timeout: 20_000 }, async () => {
+  it('observes creation when the config parent did not exist at registration', { timeout: 30_000 }, async () => {
     const root = mkdtempSync(join(tmpdir(), 'dsh-hmr-config-'))
     const dir = join(root, 'later')
     const filename = join(dir, 'plugins.yml')
@@ -127,7 +158,7 @@ describe('HMR exact config paths', () => {
     }
   })
 
-  it('serializes refreshes and waits for them during disposal', { timeout: 20_000 }, async () => {
+  it('serializes refreshes and waits for them during disposal', { timeout: 30_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-hmr-config-'))
     const filename = join(dir, 'plugins.yml')
     writeFileSync(filename, 'one')
@@ -168,7 +199,7 @@ describe('HMR exact config paths', () => {
     }
   })
 
-  it('normalizes refresh failures and broadcasts them without escaping the watcher', { timeout: 20_000 }, async () => {
+  it('normalizes refresh failures and broadcasts them without escaping the watcher', { timeout: 30_000 }, async () => {
     const dir = mkdtempSync(join(tmpdir(), 'dsh-hmr-config-'))
     const filename = join(dir, 'plugins.yml')
     const ctx = await bootHmr(dir)
@@ -190,11 +221,15 @@ describe('HMR exact config paths', () => {
       expect(observed.error).toBeInstanceOf(Error)
       expect(observed.error.message).toBe('42')
 
-      // Let Chokidar's atomic-write window close before requiring a distinct
-      // second notification from the same path.
-      await new Promise(resolve => setTimeout(resolve, 250))
-      writeFileSync(filename, 'invalid again')
-      await eventually(() => failureCount === 2, 'HMR stopped broadcasting after an observer rejected')
+      // A loaded host can coalesce a second write into the first notification
+      // (Chokidar's atomic-write window plus filesystem mtime granularity), so
+      // the trigger repeats with distinct content until the watcher delivers
+      // the second broadcast instead of assuming one write lands in a window.
+      await retriggerUntil(
+        () => failureCount === 2,
+        (attempt) => { writeFileSync(filename, `invalid again ${String(attempt)}`) },
+        'HMR stopped broadcasting after an observer rejected',
+      )
     } finally {
       await ctx.fiber.dispose()
     }

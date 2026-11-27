@@ -310,6 +310,11 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
     description: 'Root interface of the unified API. New client-request domain = one new file pair + one field here + one map row.',
     methods: [
       {
+        signature: 'mcp: McpApi',
+        description: 'Read-only MCP server activation status; configuration lives in the `mcp` settings namespace.',
+        parameters: [],
+      },
+      {
         signature: 'downloads: DownloadsApi',
         description: 'Host-only download surfaces (GET, no wire envelope); absent from IApiClient.',
         parameters: [],
@@ -878,6 +883,19 @@ export const SERVICE_API: readonly ServiceApiEntry[] = [
         description: 'Select a provider by the file\'s extension and run one query. Selection is per-query and order-independent; no match throws `LspError` `LSP_UNAVAILABLE`.',
         parameters: [{ name: 'request', description: 'the normalized query.' }, { name: 'signal', description: 'optional cancellation forwarded to the selected provider.' }],
         returns: 'the normalized, closed-union result.',
+      },
+    ],
+  },
+  {
+    key: 'mcpManager',
+    summary: 'Status service for the web configuration page: the manager\'s per-server activation snapshot, read-only and process-local.',
+    description: 'Status service for the web configuration page: the manager\'s per-server activation snapshot, read-only and process-local.',
+    methods: [
+      {
+        signature: 'list(): McpServerStatusView[]',
+        description: 'Snapshot of every server\'s activation status.',
+        parameters: [],
+        returns: 'one entry per configured-and-enabled server, in mount order.',
       },
     ],
   },
@@ -2398,6 +2416,14 @@ export const EVENT_API: readonly EventApiEntry[] = [
     parameters: [{ name: 'options', description: 'the full request. A LOOP-built request carries the process-local {@link markAgentLoopRequest} identity and arrives deep-frozen (mutation throws): its content is a pure function of the session log (the reconstructability Agent Note), so listeners read it, never rewrite it. Hand-built calls do not carry that marker; their messages already obey the immutable creation contract.' }],
   },
   {
+    name: 'mcp/synced',
+    mode: 'emit',
+    signature: '\'mcp/synced\'(statuses: McpServerStatusView[]): void',
+    summary: 'Emitted after every reconcile settles (initial mount, a settings change, or a server activation failure), carrying the complete status snapshot.',
+    description: 'Emitted after every reconcile settles (initial mount, a settings change, or a server activation failure), carrying the complete status snapshot. JSON-compatible payload: the web page and the invariant companion read the same authoritative view of what is mounted.',
+    parameters: [{ name: 'statuses', description: 'one entry per configured-and-enabled server, in mount order.' }],
+  },
+  {
     name: 'session-telemetry/record',
     mode: 'waterfall',
     signature: '\'session-telemetry/record\'(record: SessionTelemetryRecord, next: () => SessionTelemetryRecord): SessionTelemetryRecord',
@@ -3362,6 +3388,18 @@ export const TYPE_API: readonly TypeApiEntry[] = [
     declaration: 'export interface ManualCompactAgentContext extends CompactionAgentContext {\n    runMaintenance<T>(task: (signal: AbortSignal) => Promise<T>): Promise<T>;\n}',
   },
   {
+    name: 'McpApi',
+    declaration: 'export interface McpApi {\n    list(request: RpcRequest<{}>): Promise<RpcResponse<{\n        servers: McpServerView[];\n    }>>;\n}',
+  },
+  {
+    name: 'McpServerStatusView',
+    declaration: 'export interface McpServerStatusView {\n    serverName: string;\n    status: \'pending\' | \'running\' | \'error\';\n    error?: string;\n}',
+  },
+  {
+    name: 'McpServerView',
+    declaration: 'export interface McpServerView {\n    serverName: string;\n    status: \'pending\' | \'running\' | \'error\';\n    error?: string;\n}',
+  },
+  {
     name: 'Message',
     declaration: 'export interface Message {\n    readonly id: MessageId;\n    readonly role: \'system\' | \'user\' | \'assistant\';\n    readonly content: ContentBlock[];\n    readonly source: MessageSource;\n}',
   },
@@ -3644,6 +3682,14 @@ export const TYPE_API: readonly TypeApiEntry[] = [
   {
     name: 'RpcReceipt',
     declaration: 'export type RpcReceipt = {\n    accepted: true;\n} | {\n    accepted: false;\n    reason: \'not-pending\' | \'bad-response\';\n};',
+  },
+  {
+    name: 'RpcRequest',
+    declaration: 'export interface RpcRequest<P> {\n    rpcId: RpcId;\n    payload: P;\n}',
+  },
+  {
+    name: 'RpcResponse',
+    declaration: 'export interface RpcResponse<T> {\n    rpcId: RpcId;\n    result: RpcResult<T>;\n}',
   },
   {
     name: 'RpcResult',
